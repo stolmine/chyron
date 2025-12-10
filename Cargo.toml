@@ -1,0 +1,43 @@
+[package]
+name = "chyron"
+version = "0.1.0"
+edition = "2021"
+description = "A TUI news ticker that displays RSS headlines like a crawling stock ticker"
+license = "MIT"
+
+[dependencies]
+# TUI
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# RSS/Atom parsing
+feed-rs = "2.2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client for fetching feeds
+reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Config paths
+directories = "5"
+dirs-next = "2"
+
+# Randomization
+rand = "0.9"
+
+# Time handling
+chrono = "0.4"
+
+# Error handling
+anyhow = "1"
+
+# Serialization for config
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Async utilities
+futures = "0.3"
