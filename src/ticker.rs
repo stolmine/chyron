@@ -38,6 +38,8 @@ pub struct Ticker {
     current_headline_end: usize,
     /// Max age for pruning cache
     max_age: Duration,
+    /// Date format string (strftime or "relative")
+    date_format: Option<String>,
 }
 
 /// A segment of the ticker text that maps to a URL
@@ -71,6 +73,7 @@ impl Ticker {
             current_headline_idx: 0,
             current_headline_end: 0,
             max_age: config.max_age,
+            date_format: config.date_format.clone(),
         }
     }
 
@@ -163,6 +166,39 @@ impl Ticker {
         }
     }
 
+    /// Format a date according to the configured format
+    fn format_date(&self, published: Option<chrono::DateTime<Utc>>) -> String {
+        let format = match &self.date_format {
+            Some(f) => f,
+            None => return String::new(),
+        };
+
+        let date = match published {
+            Some(d) => d,
+            None => return String::new(),
+        };
+
+        if format == "relative" {
+            let now = Utc::now();
+            let duration = now.signed_duration_since(date);
+
+            let relative = if duration.num_days() > 0 {
+                format!("{}d ago", duration.num_days())
+            } else if duration.num_hours() > 0 {
+                format!("{}h ago", duration.num_hours())
+            } else if duration.num_minutes() > 0 {
+                format!("{}m ago", duration.num_minutes())
+            } else {
+                "now".to_string()
+            };
+            format!("{} ", relative)
+        } else {
+            // Use strftime format, convert to local time
+            let local = date.with_timezone(&chrono::Local);
+            format!("{} ", local.format(format))
+        }
+    }
+
     /// Rebuild the ticker text from current headlines
     fn rebuild_ticker_text(&mut self) {
         self.segments.clear();
@@ -183,12 +219,16 @@ impl Ticker {
 
             let segment_start = pos;
 
-            // Add source prefix if enabled
-            let display_text = if self.show_source {
-                format!("[{}] {}", headline.source, headline.title)
+            // Build display text with optional source and date
+            let source_prefix = if self.show_source {
+                format!("[{}] ", headline.source)
             } else {
-                headline.title.clone()
+                String::new()
             };
+            let date_part = self.format_date(headline.published);
+            let separator = if !date_part.is_empty() { "- " } else { "" };
+
+            let display_text = format!("{}{}{}{}", source_prefix, date_part, separator, headline.title);
 
             text.push_str(&display_text);
             pos += display_text.chars().count();
@@ -372,6 +412,11 @@ impl Ticker {
     pub fn speed(&self) -> u32 {
         self.speed
     }
+
+    /// Get a clone of the shown URLs set for feed filtering
+    pub fn shown_urls(&self) -> HashSet<String> {
+        self.shown_urls.clone()
+    }
 }
 
 /// A segment visible on screen with its position
@@ -402,6 +447,7 @@ mod tests {
             show_status_bar: false,
             click_modifier: crate::config::ClickModifier::None,
             rotation: RotationMode::Continuous,
+            date_format: None,
             config_path: None,
         }
     }

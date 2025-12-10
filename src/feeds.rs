@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use feed_rs::parser;
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 use tokio::fs;
@@ -51,11 +52,13 @@ pub async fn parse_feeds_file(path: &Path) -> Result<Vec<String>> {
 }
 
 /// Fetch and parse a single feed, returning headlines
+/// Skips headlines that are in the `shown` set to allow deeper feed exhaustion
 pub async fn fetch_feed(
     client: &reqwest::Client,
     url: &str,
     max_items: usize,
     max_age: Duration,
+    shown: &HashSet<String>,
 ) -> Result<(String, Vec<Headline>)> {
     let response = client
         .get(url)
@@ -100,6 +103,12 @@ pub async fn fetch_feed(
             }
 
             let url = entry.links.first().map(|l| l.href.clone());
+
+            // Skip already-shown headlines to allow feed exhaustion
+            let key = url.as_ref().unwrap_or(&title);
+            if shown.contains(key) {
+                return None;
+            }
 
             Some(Headline {
                 title,

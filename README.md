@@ -80,6 +80,10 @@ click_modifier = "none"
 
 # Rotation mode: fair (prioritize unshown headlines), continuous (simple loop)
 rotation = "fair"
+
+# Date format before headlines: strftime format, "relative", or "none"
+# Examples: "%b %d" (Dec 09), "%H:%M" (15:45), "%b %d %H:%M" (Dec 09 15:45)
+date_format = "none"
 ```
 
 ## Feed Configuration
@@ -134,6 +138,7 @@ All CLI options override config file settings.
 | `--no-status-bar` | Hide status bar |
 | `--click-modifier <MOD>` | Modifier for clicks: `none`, `ctrl`, `shift`, `alt` |
 | `--rotation <MODE>` | Rotation: `fair` (unshown first), `continuous` (loop) |
+| `--date-format <FMT>` | Date format: strftime string, `relative`, or `none` |
 | `--validate` | Check feeds and exit |
 
 ## Pause Modes

@@ -56,6 +56,12 @@ impl App {
 
     /// Fetch all feeds and update ticker
     pub async fn refresh_feeds(&mut self) -> Result<()> {
+        // Get shown headlines to skip when fetching
+        let shown = {
+            let ticker = self.ticker.read().await;
+            ticker.shown_urls()
+        };
+
         let mut all_headlines: Vec<Headline> = Vec::new();
 
         for url in &self.feed_urls {
@@ -64,6 +70,7 @@ impl App {
                 url,
                 self.config.max_per_feed,
                 self.config.max_age,
+                &shown,
             )
             .await
             {

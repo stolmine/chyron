@@ -126,6 +126,10 @@ pub struct CliArgs {
     /// Rotation mode: fair (prioritize unshown), continuous (simple loop)
     #[arg(long, value_enum)]
     pub rotation: Option<RotationMode>,
+
+    /// Date format: strftime string (e.g. "%b %d %H:%M"), "relative", or "none"
+    #[arg(long)]
+    pub date_format: Option<String>,
 }
 
 /// TOML config file structure
@@ -144,6 +148,7 @@ pub struct FileConfig {
     pub status_bar: Option<bool>,
     pub click_modifier: Option<ClickModifier>,
     pub rotation: Option<RotationMode>,
+    pub date_format: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -162,6 +167,8 @@ pub struct Config {
     pub show_status_bar: bool,
     pub click_modifier: ClickModifier,
     pub rotation: RotationMode,
+    /// Date format: strftime format string, "relative", or "none"
+    pub date_format: Option<String>,
     /// Path to config file for reloading
     pub config_path: Option<PathBuf>,
 }
@@ -248,6 +255,10 @@ impl Config {
             .or(file_config.rotation)
             .unwrap_or_default();
 
+        let date_format = args.date_format
+            .or(file_config.date_format)
+            .and_then(|s| if s == "none" { None } else { Some(s) });
+
         let config_path_for_reload = if config_path.exists() {
             Some(config_path)
         } else {
@@ -269,6 +280,7 @@ impl Config {
             show_status_bar,
             click_modifier,
             rotation,
+            date_format,
             config_path: config_path_for_reload,
         })
     }
@@ -327,6 +339,9 @@ impl Config {
         }
         if let Some(rotation) = file_config.rotation {
             self.rotation = rotation;
+        }
+        if let Some(date_format) = file_config.date_format {
+            self.date_format = if date_format == "none" { None } else { Some(date_format) };
         }
 
         Ok(true)
@@ -406,6 +421,10 @@ click_modifier = "none"
 
 # Rotation mode: fair (prioritize unshown headlines), continuous (simple loop)
 rotation = "fair"
+
+# Date format before headlines: strftime format, "relative", or "none"
+# Examples: "%b %d" (Dec 09), "%H:%M" (15:45), "%b %d %H:%M" (Dec 09 15:45)
+date_format = "none"
 "#
 }
 
