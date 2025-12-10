@@ -32,6 +32,30 @@ pub enum PauseMode {
     Never,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ClickModifier {
+    /// No modifier required (click opens link)
+    #[default]
+    None,
+    /// Require Ctrl/Cmd key
+    Ctrl,
+    /// Require Shift key
+    Shift,
+    /// Require Alt/Option key
+    Alt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RotationMode {
+    /// Prioritize unshown headlines, each gets screen time before repeating
+    #[default]
+    Fair,
+    /// Simple continuous loop, headlines repeat freely
+    Continuous,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "chyron")]
 #[command(about = "A TUI news ticker displaying RSS headlines like a stock ticker")]
@@ -95,6 +119,14 @@ pub struct CliArgs {
     /// Hide status bar
     #[arg(long)]
     pub no_status_bar: bool,
+
+    /// Modifier key required to open links: none, ctrl, shift, alt
+    #[arg(long, value_enum)]
+    pub click_modifier: Option<ClickModifier>,
+
+    /// Rotation mode: fair (prioritize unshown), continuous (simple loop)
+    #[arg(long, value_enum)]
+    pub rotation: Option<RotationMode>,
 }
 
 /// TOML config file structure
@@ -111,6 +143,8 @@ pub struct FileConfig {
     pub max_total: Option<usize>,
     pub show_source: Option<bool>,
     pub status_bar: Option<bool>,
+    pub click_modifier: Option<ClickModifier>,
+    pub rotation: Option<RotationMode>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +161,10 @@ pub struct Config {
     pub show_source: bool,
     pub validate_only: bool,
     pub show_status_bar: bool,
+    pub click_modifier: ClickModifier,
+    pub rotation: RotationMode,
+    /// Path to config file for reloading
+    config_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -203,6 +241,20 @@ impl Config {
             file_config.status_bar.unwrap_or(false)
         };
 
+        let click_modifier = args.click_modifier
+            .or(file_config.click_modifier)
+            .unwrap_or_default();
+
+        let rotation = args.rotation
+            .or(file_config.rotation)
+            .unwrap_or_default();
+
+        let config_path_for_reload = if config_path.exists() {
+            Some(config_path)
+        } else {
+            None
+        };
+
         Ok(Self {
             feeds_path,
             delimiter,
@@ -216,7 +268,69 @@ impl Config {
             show_source,
             validate_only: args.validate,
             show_status_bar,
+            click_modifier,
+            rotation,
+            config_path: config_path_for_reload,
         })
+    }
+
+    /// Reload config from file, updating only file-configurable settings
+    /// Returns Ok(true) if config was reloaded, Ok(false) if no config file
+    pub fn reload(&mut self) -> Result<bool> {
+        let config_path = match &self.config_path {
+            Some(p) => p.clone(),
+            None => return Ok(false),
+        };
+
+        if !config_path.exists() {
+            return Ok(false);
+        }
+
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
+        let file_config: FileConfig = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse config file: {}", config_path.display()))?;
+
+        // Update settings from file (CLI args were applied at startup and take precedence,
+        // but we can't track which settings came from CLI vs defaults, so we reload all)
+        if let Some(delimiter) = file_config.delimiter {
+            self.delimiter = delimiter;
+        }
+        if let Some(speed) = file_config.speed {
+            self.speed = speed;
+        }
+        if let Some(sort) = file_config.sort {
+            self.sort = sort;
+        }
+        if let Some(pause) = file_config.pause {
+            self.pause_mode = pause;
+        }
+        if let Some(refresh_minutes) = file_config.refresh_minutes {
+            self.refresh_interval = Duration::from_secs(refresh_minutes * 60);
+        }
+        if let Some(max_age_hours) = file_config.max_age_hours {
+            self.max_age = Duration::from_secs(max_age_hours * 3600);
+        }
+        if let Some(max_per_feed) = file_config.max_per_feed {
+            self.max_per_feed = max_per_feed;
+        }
+        if let Some(max_total) = file_config.max_total {
+            self.max_total = max_total;
+        }
+        if let Some(show_source) = file_config.show_source {
+            self.show_source = show_source;
+        }
+        if let Some(status_bar) = file_config.status_bar {
+            self.show_status_bar = status_bar;
+        }
+        if let Some(click_modifier) = file_config.click_modifier {
+            self.click_modifier = click_modifier;
+        }
+        if let Some(rotation) = file_config.rotation {
+            self.rotation = rotation;
+        }
+
+        Ok(true)
     }
 }
 
@@ -289,6 +403,13 @@ show_source = true
 
 # Show status bar at bottom
 status_bar = false
+
+# Modifier key required to open links: none, ctrl, shift, alt
+# Use ctrl/shift/alt to prevent accidental clicks when focusing the window
+click_modifier = "none"
+
+# Rotation mode: fair (prioritize unshown headlines), continuous (simple loop)
+rotation = "fair"
 "#
 }
 

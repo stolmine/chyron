@@ -1,7 +1,8 @@
-use crate::config::{Config, SortMode};
+use crate::config::{Config, RotationMode, SortMode};
 use crate::feeds::Headline;
 use chrono::Utc;
 use rand::seq::SliceRandom;
+use std::collections::HashSet;
 
 /// Manages the scrolling ticker state and headline rotation
 pub struct Ticker {
@@ -23,6 +24,14 @@ pub struct Ticker {
     show_source: bool,
     /// Whether ticker is paused
     paused: bool,
+    /// Rotation mode (fair vs continuous)
+    rotation_mode: RotationMode,
+    /// URLs of headlines that have been fully shown (for fair rotation)
+    shown_urls: HashSet<String>,
+    /// Index of current headline being displayed (for tracking when shown)
+    current_headline_idx: usize,
+    /// Character position where current headline ends
+    current_headline_end: usize,
 }
 
 /// A segment of the ticker text that maps to a URL
@@ -45,6 +54,10 @@ impl Ticker {
             delimiter: config.delimiter.clone(),
             show_source: config.show_source,
             paused: false,
+            rotation_mode: config.rotation,
+            shown_urls: HashSet::new(),
+            current_headline_idx: 0,
+            current_headline_end: 0,
         }
     }
 
@@ -75,6 +88,32 @@ impl Ticker {
             }
         }
 
+        // For fair rotation, prioritize unshown headlines
+        if self.rotation_mode == RotationMode::Fair {
+            // Partition into unshown and shown
+            let (unshown, shown): (Vec<_>, Vec<_>) = headlines
+                .into_iter()
+                .partition(|h| !self.is_headline_shown(h));
+
+            // Clean up shown_urls: remove any that aren't in the new headline set
+            let all_urls: HashSet<String> = unshown
+                .iter()
+                .chain(shown.iter())
+                .filter_map(|h| h.url.clone())
+                .collect();
+            self.shown_urls.retain(|url| all_urls.contains(url));
+
+            // If all headlines have been shown, reset tracking
+            if unshown.is_empty() && !shown.is_empty() {
+                self.shown_urls.clear();
+                headlines = shown;
+            } else {
+                // Put unshown first, then shown
+                headlines = unshown;
+                headlines.extend(shown);
+            }
+        }
+
         self.headlines = headlines;
         self.rebuild_ticker_text();
 
@@ -82,6 +121,24 @@ impl Ticker {
         let len = self.ticker_chars.len() as f64;
         if len > 0.0 && self.offset >= len {
             self.offset = 0.0;
+        }
+
+        // Reset tracking for new headline set
+        self.current_headline_idx = 0;
+        self.current_headline_end = if !self.segments.is_empty() {
+            self.segments[0].end
+        } else {
+            0
+        };
+    }
+
+    /// Check if a headline has been shown (by URL or title if no URL)
+    fn is_headline_shown(&self, headline: &Headline) -> bool {
+        if let Some(url) = &headline.url {
+            self.shown_urls.contains(url)
+        } else {
+            // For headlines without URLs, use title as key
+            self.shown_urls.contains(&headline.title)
         }
     }
 
@@ -135,12 +192,57 @@ impl Ticker {
             return;
         }
 
+        let old_offset = self.offset as usize;
         let len = self.ticker_chars.len() as f64;
         self.offset += delta_secs * self.speed as f64;
 
         // Wrap around
         if self.offset >= len {
             self.offset -= len;
+        }
+
+        // Track shown headlines for fair rotation
+        if self.rotation_mode == RotationMode::Fair && !self.headlines.is_empty() {
+            let new_offset = self.offset as usize;
+
+            // Check if we've scrolled past the end of the current headline
+            // A headline is "shown" once its end position has scrolled off the left edge
+            if new_offset > old_offset {
+                // Normal forward scrolling
+                if old_offset < self.current_headline_end && new_offset >= self.current_headline_end {
+                    self.mark_current_headline_shown();
+                    self.advance_to_next_headline();
+                }
+            } else if new_offset < old_offset {
+                // Wrapped around - mark current and reset
+                self.mark_current_headline_shown();
+                self.current_headline_idx = 0;
+                self.current_headline_end = if !self.segments.is_empty() {
+                    self.segments[0].end
+                } else {
+                    0
+                };
+            }
+        }
+    }
+
+    /// Mark the current headline as shown
+    fn mark_current_headline_shown(&mut self) {
+        if self.current_headline_idx < self.headlines.len() {
+            let key = if let Some(url) = &self.headlines[self.current_headline_idx].url {
+                url.clone()
+            } else {
+                self.headlines[self.current_headline_idx].title.clone()
+            };
+            self.shown_urls.insert(key);
+        }
+    }
+
+    /// Advance tracking to the next headline
+    fn advance_to_next_headline(&mut self) {
+        self.current_headline_idx += 1;
+        if self.current_headline_idx < self.segments.len() {
+            self.current_headline_end = self.segments[self.current_headline_idx].end;
         }
     }
 
@@ -273,6 +375,9 @@ mod tests {
             show_source: false,
             validate_only: false,
             show_status_bar: false,
+            click_modifier: crate::config::ClickModifier::None,
+            rotation: RotationMode::Continuous,
+            config_path: None,
         }
     }
 

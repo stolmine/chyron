@@ -1,4 +1,4 @@
-use crate::config::{Config, PauseMode};
+use crate::config::{ClickModifier, Config, PauseMode};
 use crate::feeds::{self, Headline};
 use crate::ticker::Ticker;
 use crate::ui::{HyperlinkRenderer, StatusBar, TickerWidget};
@@ -83,6 +83,16 @@ impl App {
         ticker.set_headlines(all_headlines, self.config.sort);
         self.last_refresh = Instant::now();
 
+        Ok(())
+    }
+
+    /// Reload config from file and apply changes
+    async fn reload_config(&mut self) -> Result<()> {
+        if self.config.reload()? {
+            // Apply speed change to ticker
+            let mut ticker = self.ticker.write().await;
+            ticker.set_speed(self.config.speed);
+        }
         Ok(())
     }
 
@@ -237,6 +247,11 @@ impl App {
                 self.refresh_feeds().await?;
                 self.status_message = None;
             }
+            KeyCode::Char('c') => {
+                self.status_message = Some("Reloading config...".to_string());
+                self.reload_config().await?;
+                self.status_message = None;
+            }
             _ => {}
         }
         Ok(())
@@ -249,12 +264,22 @@ impl App {
                 self.mouse_y = Some(mouse.row);
             }
             MouseEventKind::Down(event::MouseButton::Left) => {
-                // Check for click on hyperlink
-                let ticker = self.ticker.read().await;
-                let term_width = terminal::size()?.0 as usize;
-                if let Some(url) = ticker.get_url_at_position(mouse.column as usize, term_width) {
-                    drop(ticker);
-                    self.open_url(&url)?;
+                // Check if required modifier is held
+                let modifier_ok = match self.config.click_modifier {
+                    ClickModifier::None => true,
+                    ClickModifier::Ctrl => mouse.modifiers.contains(KeyModifiers::CONTROL),
+                    ClickModifier::Shift => mouse.modifiers.contains(KeyModifiers::SHIFT),
+                    ClickModifier::Alt => mouse.modifiers.contains(KeyModifiers::ALT),
+                };
+
+                if modifier_ok {
+                    // Check for click on hyperlink
+                    let ticker = self.ticker.read().await;
+                    let term_width = terminal::size()?.0 as usize;
+                    if let Some(url) = ticker.get_url_at_position(mouse.column as usize, term_width) {
+                        drop(ticker);
+                        self.open_url(&url)?;
+                    }
                 }
             }
             _ => {}
@@ -281,7 +306,7 @@ impl App {
     }
 
     async fn render(
-        &self,
+        &mut self,
         terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     ) -> Result<()> {
         let ticker = self.ticker.read().await;

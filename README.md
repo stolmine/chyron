@@ -73,6 +73,13 @@ show_source = true
 
 # Show status bar at bottom
 status_bar = false
+
+# Modifier key required to open links: none, ctrl, shift, alt
+# Useful to prevent accidental clicks when focusing the window
+click_modifier = "none"
+
+# Rotation mode: fair (prioritize unshown headlines), continuous (simple loop)
+rotation = "fair"
 ```
 
 ## Feed Configuration
@@ -101,8 +108,9 @@ Tags after URLs are ignored.
 | `+` / `=` | Increase speed |
 | `-` / `_` | Decrease speed |
 | `r` | Refresh feeds |
+| `c` | Reload config |
 | `Ctrl+C` | Quit |
-| Mouse click | Open headline link in browser |
+| Mouse click | Open headline link (modifier configurable) |
 
 ## CLI Options
 
@@ -124,6 +132,8 @@ All CLI options override config file settings.
 | `--hide-source` | Hide `[Source]` prefix |
 | `--status-bar` | Show status bar |
 | `--no-status-bar` | Hide status bar |
+| `--click-modifier <MOD>` | Modifier for clicks: `none`, `ctrl`, `shift`, `alt` |
+| `--rotation <MODE>` | Rotation: `fair` (unshown first), `continuous` (loop) |
 | `--validate` | Check feeds and exit |
 
 ## Pause Modes
