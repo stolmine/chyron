@@ -23,7 +23,6 @@ reqwest = { version = "0.12", features = ["rustls-tls"], default-features = fals
 clap = { version = "4", features = ["derive"] }
 
 # Config paths
-directories = "5"
 dirs-next = "2"
 
 # Randomization
@@ -37,7 +36,11 @@ anyhow = "1"
 
 # Serialization for config
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 
 # Async utilities
 futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

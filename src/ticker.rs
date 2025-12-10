@@ -1,8 +1,10 @@
+use crate::cache::ShownCache;
 use crate::config::{Config, RotationMode, SortMode};
 use crate::feeds::Headline;
 use chrono::Utc;
 use rand::seq::SliceRandom;
 use std::collections::HashSet;
+use std::time::Duration;
 
 /// Manages the scrolling ticker state and headline rotation
 pub struct Ticker {
@@ -22,8 +24,10 @@ pub struct Ticker {
     delimiter: String,
     /// Whether to show source prefix
     show_source: bool,
-    /// Whether ticker is paused
-    paused: bool,
+    /// Whether ticker is paused (manual toggle via spacebar)
+    manual_paused: bool,
+    /// Whether ticker is auto-paused (by hover/focus mode)
+    auto_paused: bool,
     /// Rotation mode (fair vs continuous)
     rotation_mode: RotationMode,
     /// URLs of headlines that have been fully shown (for fair rotation)
@@ -32,6 +36,8 @@ pub struct Ticker {
     current_headline_idx: usize,
     /// Character position where current headline ends
     current_headline_end: usize,
+    /// Max age for pruning cache
+    max_age: Duration,
 }
 
 /// A segment of the ticker text that maps to a URL
@@ -44,6 +50,11 @@ pub struct TickerSegment {
 
 impl Ticker {
     pub fn new(config: &Config) -> Self {
+        // Load persisted shown cache
+        let mut cache = ShownCache::load();
+        cache.prune(config.max_age);
+        let shown_urls = cache.shown_keys();
+
         Self {
             headlines: Vec::new(),
             ticker_text: String::new(),
@@ -53,12 +64,22 @@ impl Ticker {
             speed: config.speed,
             delimiter: config.delimiter.clone(),
             show_source: config.show_source,
-            paused: false,
+            manual_paused: false,
+            auto_paused: false,
             rotation_mode: config.rotation,
-            shown_urls: HashSet::new(),
+            shown_urls,
             current_headline_idx: 0,
             current_headline_end: 0,
+            max_age: config.max_age,
         }
+    }
+
+    /// Save shown headlines to persistent cache
+    pub fn save_shown_cache(&self) {
+        let mut cache = ShownCache::load();
+        cache.prune(self.max_age);
+        cache.merge_shown(&self.shown_urls);
+        let _ = cache.save(); // Ignore errors, cache is non-critical
     }
 
     /// Update headlines and rebuild the ticker text
@@ -188,7 +209,7 @@ impl Ticker {
 
     /// Advance the ticker by the given time delta
     pub fn tick(&mut self, delta_secs: f64) {
-        if self.paused || self.ticker_chars.is_empty() {
+        if self.manual_paused || self.auto_paused || self.ticker_chars.is_empty() {
             return;
         }
 
@@ -320,20 +341,24 @@ impl Ticker {
         None
     }
 
-    pub fn pause(&mut self) {
-        self.paused = true;
+    /// Auto-pause (called by hover/focus mode)
+    pub fn auto_pause(&mut self) {
+        self.auto_paused = true;
     }
 
-    pub fn resume(&mut self) {
-        self.paused = false;
+    /// Auto-resume (called by hover/focus mode)
+    pub fn auto_resume(&mut self) {
+        self.auto_paused = false;
     }
 
+    /// Check if ticker is paused (either manually or auto)
     pub fn is_paused(&self) -> bool {
-        self.paused
+        self.manual_paused || self.auto_paused
     }
 
+    /// Manual toggle (spacebar)
     pub fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
+        self.manual_paused = !self.manual_paused;
     }
 
     pub fn headline_count(&self) -> usize {
@@ -415,10 +440,23 @@ mod tests {
         let mut ticker = Ticker::new(&config);
         assert!(!ticker.is_paused());
 
-        ticker.pause();
+        ticker.auto_pause();
         assert!(ticker.is_paused());
 
-        ticker.resume();
+        ticker.auto_resume();
+        assert!(!ticker.is_paused());
+
+        // Manual pause
+        ticker.toggle_pause();
+        assert!(ticker.is_paused());
+
+        // Auto-pause shouldn't affect manual pause state
+        ticker.auto_pause();
+        assert!(ticker.is_paused());
+        ticker.auto_resume();
+        assert!(ticker.is_paused()); // still paused due to manual
+
+        ticker.toggle_pause();
         assert!(!ticker.is_paused());
     }
 }

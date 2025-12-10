@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -164,7 +163,7 @@ pub struct Config {
     pub click_modifier: ClickModifier,
     pub rotation: RotationMode,
     /// Path to config file for reloading
-    config_path: Option<PathBuf>,
+    pub config_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -335,14 +334,11 @@ impl Config {
 }
 
 fn get_config_dir() -> PathBuf {
-    if let Some(proj_dirs) = ProjectDirs::from("", "", "chyron") {
-        proj_dirs.config_dir().to_path_buf()
-    } else {
-        dirs_next::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".config")
-            .join("chyron")
-    }
+    // Always use ~/.config/chyron for consistency across platforms
+    dirs_next::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".config")
+        .join("chyron")
 }
 
 /// Discover feeds file in priority order:

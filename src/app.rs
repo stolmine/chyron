@@ -122,26 +122,27 @@ impl App {
                 {
                     let mut ticker = self.ticker.write().await;
 
-                    // Handle pause mode
+                    // Handle auto-pause mode
                     match self.config.pause_mode {
                         PauseMode::Hover => {
                             let mouse_on_ticker = self.terminal_focused
                                 && self.mouse_y.map(|y| y == self.ticker_row).unwrap_or(false);
                             if mouse_on_ticker {
-                                ticker.pause();
+                                ticker.auto_pause();
                             } else {
-                                ticker.resume();
+                                ticker.auto_resume();
                             }
                         }
                         PauseMode::Focus => {
                             if self.terminal_focused {
-                                ticker.pause();
+                                ticker.auto_pause();
                             } else {
-                                ticker.resume();
+                                ticker.auto_resume();
                             }
                         }
                         PauseMode::Never => {
-                            // Don't auto-pause, only manual pause via spacebar
+                            // Ensure auto-pause is off
+                            ticker.auto_resume();
                         }
                     }
 
@@ -157,6 +158,12 @@ impl App {
 
             // Render
             self.render(&mut terminal).await?;
+        }
+
+        // Save shown headlines cache before exit
+        {
+            let ticker = self.ticker.read().await;
+            ticker.save_shown_cache();
         }
 
         self.restore_terminal(&mut terminal)?;
