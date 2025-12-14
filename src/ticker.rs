@@ -119,17 +119,14 @@ impl Ticker {
                 .into_iter()
                 .partition(|h| !self.is_headline_shown(h));
 
-            // Clean up shown_urls: remove any that aren't in the new headline set
-            let all_urls: HashSet<String> = unshown
-                .iter()
-                .chain(shown.iter())
-                .filter_map(|h| h.url.clone())
-                .collect();
-            self.shown_urls.retain(|url| all_urls.contains(url));
+            // Note: We don't clean up shown_urls here because:
+            // - The cache is pruned by TTL (max_age) on load/save
+            // - Shown headlines will naturally cycle back when all are shown
+            // - Cleaning up would reset rotation prematurely
 
-            // If all headlines have been shown, reset tracking
+            // If all fetched headlines have been shown, just use them
+            // (they're all we have until feeds publish new content)
             if unshown.is_empty() && !shown.is_empty() {
-                self.shown_urls.clear();
                 headlines = shown;
             } else {
                 // Put unshown first, then shown
@@ -411,11 +408,6 @@ impl Ticker {
 
     pub fn speed(&self) -> u32 {
         self.speed
-    }
-
-    /// Get a clone of the shown URLs set for feed filtering
-    pub fn shown_urls(&self) -> HashSet<String> {
-        self.shown_urls.clone()
     }
 }
 
